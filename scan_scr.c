@@ -104,8 +104,11 @@ static void display_aplist(WINDOW *w_aplst)
 	struct scan_entry *cur;
 
 	/* Scanning can take several seconds - do not refresh if locked. */
-	if (pthread_mutex_trylock(&sr.mutex))
+	int err = pthread_mutex_trylock(&sr.mutex);
+	if (err == EBUSY)
 		return;
+	else if (err != 0)
+		check("display aplist trylock", err);
 
 	if (sr.head || *sr.msg)
 		for (i = 1; i <= MAXYLEN; i++)
@@ -191,7 +194,7 @@ static void display_aplist(WINDOW *w_aplst)
 		}
 	}
 done:
-	pthread_mutex_unlock(&sr.mutex);
+	check("display aplist unlock", pthread_mutex_unlock(&sr.mutex));
 	wrefresh(w_aplst);
 }
 
@@ -204,7 +207,7 @@ void scr_aplst_init(void)
 	wrefresh(w_aplst);
 
 	init_scan_list(&sr);
-	pthread_create(&scan_thread, NULL, do_scan, &sr);
+	check("aplst thread create", pthread_create(&scan_thread, NULL, do_scan, &sr));
 }
 
 int scr_aplst_loop(WINDOW *w_menu)
@@ -250,9 +253,8 @@ int scr_aplst_loop(WINDOW *w_menu)
 
 void scr_aplst_fini(void)
 {
-	pthread_cancel(scan_thread);
+	check("pthread cancel aplst", pthread_cancel(scan_thread));
 	free_scan_list(sr.head);
 	free(sr.channel_stats);
-
 	delwin(w_aplst);
 }

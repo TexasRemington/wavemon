@@ -42,9 +42,9 @@ static void *sampling_loop(void *arg)
 	pthread_sigmask(SIG_BLOCK, &blockmask, NULL);
 
 	do {
-		pthread_mutex_lock(&linkstat.mutex);
+		check("sampling lock", pthread_mutex_lock(&linkstat.mutex));
 		iw_nl80211_get_linkstat(&linkstat.data);
-		pthread_mutex_unlock(&linkstat.mutex);
+		check("sampling unlock", pthread_mutex_unlock(&linkstat.mutex));
 
 		iw_cache_update(&linkstat.data);
 	} while (linkstat.run && usleep(conf.stat_iv * 1000) == 0);
@@ -53,16 +53,16 @@ static void *sampling_loop(void *arg)
 
 void sampling_init(void)
 {
-	pthread_mutex_init(&linkstat.mutex, NULL);
+	check("sampling mutex init", pthread_mutex_init(&linkstat.mutex, NULL));
 	linkstat.run = true;
-	pthread_create(&sampling_thread, NULL, sampling_loop, NULL);
+	check("sampling thread start", pthread_create(&sampling_thread, NULL, sampling_loop, NULL));
 }
 
 void sampling_stop(void)
 {
 	linkstat.run = false;
-	pthread_join(sampling_thread, NULL);
-	pthread_mutex_destroy(&linkstat.mutex);
+	check("sampling thread join", pthread_join(sampling_thread, NULL));
+	check("sampling mutex destroy", pthread_mutex_destroy(&linkstat.mutex));
 }
 
 static void display_levels(void)
@@ -657,11 +657,14 @@ void scr_info_init(void)
 int scr_info_loop(WINDOW *w_menu)
 {
 	time_t now = time(NULL);
+	int err = pthread_mutex_trylock(&linkstat.mutex);
 
-	if (!pthread_mutex_trylock(&linkstat.mutex)) {
+	if (err == 0) {
 		display_levels();
 		display_stats();
-		pthread_mutex_unlock(&linkstat.mutex);
+		check("sampling mutex info loop unlock", pthread_mutex_unlock(&linkstat.mutex));
+	} else if (err != EBUSY) {
+		err_sys("sampling mutex trylock", err);
 	}
 
 	if (now - last_update >= conf.info_iv) {

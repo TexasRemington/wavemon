@@ -379,25 +379,25 @@ void *do_scan(void *sr_ptr)
 	sigaddset(&blockmask, SIGWINCH);
 	pthread_sigmask(SIG_BLOCK, &blockmask, NULL);
 
-	pthread_detach(pthread_self());
+	check("scan thread detach", pthread_detach(pthread_self()));
 	do {
 		ret = iw_nl80211_scan_trigger();
 
-		pthread_mutex_lock(&sr->mutex);
+		check("scan result loop lock", pthread_mutex_lock(&sr->mutex));
 		init_scan_list(sr);
 		switch(-ret) {
 		case 0:
 		case EBUSY:
 			/* Trigger returns -EBUSY if a scan request is pending or ready. */
-			pthread_mutex_unlock(&sr->mutex);
+			check("scan loop unlock", pthread_mutex_unlock(&sr->mutex));
 
 			/* Do not hold the lock while awaiting results. */
 			if (!wait_for_scan_events()) {
-				pthread_mutex_lock(&sr->mutex);
+				check("scan wait no results lock", pthread_mutex_lock(&sr->mutex));
 				snprintf(sr->msg, sizeof(sr->msg), "Waiting for scan data...");
-				pthread_mutex_unlock(&sr->mutex);
+				check("scan loop unlock 2", pthread_mutex_unlock(&sr->mutex));
 			} else {
-				pthread_mutex_lock(&sr->mutex);
+				check("scan wait results lock", pthread_mutex_lock(&sr->mutex));
 				ret = iw_nl80211_get_scan_data(sr);
 				if (ret < 0) {
 					snprintf(sr->msg, sizeof(sr->msg),
@@ -406,13 +406,13 @@ void *do_scan(void *sr_ptr)
 					snprintf(sr->msg, sizeof(sr->msg), "Empty scan results on %s", conf_ifname());
 				}
 				compute_channel_stats(sr);
-				pthread_mutex_unlock(&sr->mutex);
+				check("scan loop unlock 3", pthread_mutex_unlock(&sr->mutex));
 			}
 			break;
 		case EPERM:
 			if (!has_net_admin_capability())
 				snprintf(sr->msg, sizeof(sr->msg), "This screen requires CAP_NET_ADMIN permissions");
-			pthread_mutex_unlock(&sr->mutex);
+			check("scan loop unlock 4", pthread_mutex_unlock(&sr->mutex));
 			return NULL;
 		case EFAULT:
 			/* EFAULT can occur after a window resizing event: temporary, fall through. */
@@ -420,12 +420,12 @@ void *do_scan(void *sr_ptr)
 		case EAGAIN:
 			/* Temporary errors. */
 			snprintf(sr->msg, sizeof(sr->msg), "Waiting for device to become ready ...");
-			pthread_mutex_unlock(&sr->mutex);
+			check("scan loop unlock 5", pthread_mutex_unlock(&sr->mutex));
 			break;
 		case ENETDOWN:
 			if (!if_is_up(conf_ifname())) {
 				snprintf(sr->msg, sizeof(sr->msg), "Interface %s is down - setting it up ...", conf_ifname());
-				pthread_mutex_unlock(&sr->mutex);
+				check("scan loop unlock 6", pthread_mutex_unlock(&sr->mutex));
 
 				if (if_set_up(conf_ifname()) < 0)
 					err_sys("Can not bring up interface '%s'", conf_ifname());
@@ -434,7 +434,7 @@ void *do_scan(void *sr_ptr)
 			/* fall through */
 		default:
 			snprintf(sr->msg, sizeof(sr->msg), "Scan trigger failed on %s: %s", conf_ifname(), strerror(-ret));
-			pthread_mutex_unlock(&sr->mutex);
+			check("scan loop unlock 7", pthread_mutex_unlock(&sr->mutex));
 		}
 	} while (usleep(conf.stat_iv * 1000) == 0);
 

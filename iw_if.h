@@ -457,3 +457,8 @@ static inline char *format_retry(const struct iw_param *retry,
 
 	return buf;
 }
+
+static inline void check(const char *msg, int rc) {
+	if (rc != 0)
+		err_sys("%s: rc = %d", msg, rc);
+}
